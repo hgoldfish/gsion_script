@@ -1,0 +1,504 @@
+#!/usr/bin/env python3
+
+import sys
+import io
+
+
+class Module:
+    statements = None
+
+
+class Statement:
+    pass
+
+
+class FunctionStatement:
+    name = ""
+    args = None
+    statements = None
+
+
+class ExpressionStatement(Statement):
+    name = ""
+    expression = None
+
+
+class IfStatement(Statement):
+    condition = None
+    true_statements = None
+    false_statements = None
+
+
+class ReturnStatement(Statement):
+    expression = None
+
+
+class Expression:
+    pass
+
+
+class ConstExpression(Expression):
+    value = None
+
+
+class VariableExpression(Expression):
+    name = ""
+
+
+class CallExpression(Expression):
+    name = ""
+    params = None
+
+
+class BinaryExpression(Expression):
+    operation = ""
+    lhs = None
+    rhs = None
+
+
+
+Operator = 1
+Identifier = 2
+NewLine = 3
+Number = 4
+String = 5
+
+
+class Token:
+    type = None
+    value = ""
+    
+    def __init__(self, type, value = None):
+        self.type, self.value = type, value
+
+    def __str__(self):
+        return "Token<{}:{}>".format(self.type, self.value)
+
+
+def next_token(source):
+    i = 0
+    while i < len(source):
+        c = source[i]
+        if c == "\n":
+            i += 1
+            yield Token(NewLine)
+        elif c in "{}(),+-*/":
+            i += 1
+            yield Token(Operator, c)
+        elif c == "=":
+            i += 1
+            if i < len(source) and source[i] == "=":
+                i += 1
+                yield Token(Operator, "==")
+            else:
+                yield Token(Operator, "=")
+        elif c.isalpha() or c == "$":
+            if c == "g":
+                if source[i:i+19] == "gison is the great!":
+                    i += 19
+                    continue
+                elif source[i:i+11] == "gison says:":
+                    i += 11
+                    continue
+            elif c == "l":
+                if source[i:i+16] == "long live gison!":
+                    i += 16
+                    continue
+            identifier = c
+            i += 1
+            while i < len(source):
+                t = source[i]
+                if t.isalpha() or t == "$" or t.isdigit():
+                    identifier += t
+                    i += 1
+                else:
+                    break
+            yield Token(Identifier, identifier)
+        elif c.isdigit():
+            n = c
+            i += 1
+            while i < len(source):
+                t = source[i]
+                if t.isdigit():
+                    i += 1
+                    n += t
+                else:
+                    break
+            yield Token(Number, int(n))
+        elif c == '"':
+            string = ""
+            i += 1
+            while i < len(source):
+                t = source[i]
+                i += 1
+                if t == '"':
+                    break
+                elif t == "\n":
+                    raise ParseException("new line in string.")
+                else:
+                    string += t
+            yield Token(String, string)
+        elif c == " ":
+            i += 1
+            continue
+        else:
+            print(c)
+
+
+class Lexer:
+    def __init__(self, source):
+        self.itor = next_token(source)
+        self.token = next(self.itor)
+        
+    def peek(self):
+        return self.token
+    
+    def get(self):
+        token = self.token
+        try:
+            self.token = next(self.itor)
+        except StopIteration:
+            self.token = None
+        return token
+
+
+class ParseException(Exception):
+    pass
+
+
+def try_parse_binary(lexer, operators, callback):
+    lhs = None
+    operator = None
+    while True:
+        sub_expression = callback(lexer)
+        if lhs is not None:
+            t = lhs
+            lhs = BinaryExpression()
+            lhs.operation, lhs.lhs, lhs.rhs = operator, t, sub_expression
+        else:
+            lhs = sub_expression
+        token = lexer.peek()
+        if token.type == Operator and token.value in operators:
+            lexer.get()
+            operator = token.value
+        else:
+            break
+    return lhs
+
+
+def try_parse_comparison(lexer):
+    return try_parse_binary(lexer, ("<", ">", "==", ">=", "<=", "!=", "in", "not in", "is", "is not"), try_parse_arith_expr)
+
+
+def try_parse_arith_expr(lexer):
+    return try_parse_binary(lexer, "+-", try_parse_term)
+
+
+def try_parse_term(lexer):
+    return try_parse_binary(lexer, "*/%", try_parse_atomic)
+
+
+def try_parse_atomic(lexer):
+    token = lexer.get()
+    if token.type == Operator and token.value == "(":
+        expr = parse_expression(lexer)
+        token = lexer.get()
+        if token.type != Operator or token.value != ")":
+            raise ParseException("syntax error, missing ')'")
+        return expr
+    if token.type == Identifier:
+        if lexer.peek().type == Operator and lexer.peek().value == "(":
+            expr = CallExpression()
+            expr.name = token.value
+            lexer.get()
+            expr.params = []
+            while True:
+                token = lexer.peek()
+                if token.type == Operator and token.value == ")":
+                    lexer.get()
+                    break
+                expr.params.append(parse_expression(lexer))
+                token = lexer.peek()
+                if token.type == Operator and token.value == ",":
+                    token.get()
+            return expr
+        else:
+            expr = VariableExpression()
+            expr.name = token.value
+            return expr
+    elif token.type == String or token.type == Number:
+        expr = ConstExpression()
+        expr.value = token.value
+        return expr
+    else:
+        raise ParseException("syntax error, invalid atomic expression: {}:{}".format(token.type, token.value))
+
+
+def parse_expression(lexer):
+    return try_parse_comparison(lexer)
+
+
+def parse_if_statement(lexer):
+    token = lexer.get()
+    if token.type != Identifier or token.value != "if":
+        raise ParseException("syntax error, miss 'if'.")
+    token = lexer.get()
+    if token.type != Operator or token.value != "(":
+        raise ParseException("syntax error, miss '(' in if statement.")
+    statement = IfStatement()
+    statement.condition = parse_expression(lexer)
+    token = lexer.get()
+    if token.type != Operator or token.value != ")":
+        raise ParseException("syntax error, miss ')' in if statement.")
+    token = lexer.get()
+    if token.type != Operator or token.value != "{":
+        raise ParseException("syntax error, miss '{' in if statement.")
+    statement.true_statements = []
+    statement.false_statements = []
+    while True:
+        token = lexer.peek()
+        if token.type == Operator and token.value == "}":
+            lexer.get()
+            break
+        if token.type == NewLine:
+            lexer.get()
+            continue
+        statement.true_statements.append(parse_statement(lexer))
+    token = lexer.peek()
+    if token.type == Identifier and token.value == "else":
+        lexer.get()
+        token = lexer.get()
+        if token.type != Operator or token.value != "{":
+            raise ParseException("syntax error, miss '{' in else statement.")
+        while True:
+            token = lexer.peek()
+            if token.type == Operator and token.value == "}":
+                lexer.get()
+                break
+            if token.type == NewLine:
+                lexer.get()
+                continue
+            statement.false_statements.append(parse_statement(lexer))
+    return statement
+    
+
+def parse_return_statement(lexer):
+    token = lexer.get()
+    if token.type != Identifier or token.value != "return":
+        raise ParseException("syntax error, miss 'return'.")
+    statement = ReturnStatement()
+    token = lexer.peek()
+    if token.type != NewLine:
+        statement.expression = parse_expression(lexer)
+    return statement
+
+
+def parse_function_statement(lexer):
+    token = lexer.get()
+    if token.type != Identifier or token.value != "function":
+        raise ParseException("syntax error, miss 'function'.")
+    statement = FunctionStatement()
+    token = lexer.get()
+    if token.type != Identifier or token.value in ("function", "if", "else", "return"):
+        raise ParseException("syntax error, miss function name.")
+    statement.name = token.value
+    token = lexer.get()
+    if token.type != Operator or token.value != "(":
+        raise ParseException("syntax error, miss '(' in function.")
+    statement.args = []
+    while True:
+        token = lexer.peek()
+        if token.type == Operator and token.value == ")":
+            lexer.get()
+            break
+        token = lexer.get()
+        if token.type != Identifier:
+            raise ParseException("syntax error: function argument must be identifer: {}".format(token))
+        statement.args.append(token.value)
+        token = lexer.peek()
+        if token.type == Operator and token.value == ",":
+            token.get()
+        
+    token = lexer.get()
+    if token.type != Operator or token.value != "{":
+        raise ParseException("syntax error, miss '{' in function.")
+    statement.statements = []
+    while True:
+        token = lexer.peek()
+        if token.type == Operator and token.value == "}":
+            lexer.get()
+            break
+        if token.type == NewLine:
+            lexer.get()
+            continue
+        statement.statements.append(parse_statement(lexer))
+    return statement
+
+
+def parse_expression_statement(lexer):
+    statement = ExpressionStatement()
+    expr = parse_expression(lexer)
+    token = lexer.peek()
+    if token.type == Operator and token.value == "=":
+        if type(expr) is not VariableExpression:
+            raise ParseException("can not assign expression to another expression: {}.".format(type(expr)))
+        statement.name = expr.name
+        lexer.get()
+        statement.expression = parse_expression(lexer)
+    else:
+        statement.expression = expr
+    return statement
+
+
+def parse_statement(lexer):
+    token = lexer.peek()
+    if token.type == Identifier:
+        if token.value == "if":
+            return parse_if_statement(lexer)
+        elif token.value == "return":
+            return parse_return_statement(lexer)
+        elif token.value == "function":
+            return parse_function_statement(lexer)
+        else:
+            return parse_expression_statement(lexer)
+    elif token.type == String:
+        return parse_expression_statement(lexer)
+    elif token.type == Number:
+        return parse_expression_statement(lexer)
+    else:
+        raise ParseException("syntax error: {}".format(token))
+            
+
+def parse_module(lexer):
+    module = Module()
+    module.statements = []
+    while True:
+        token = lexer.peek()
+        if token is None:
+            break
+        if token.type == NewLine:
+            lexer.get()
+            continue
+        else:
+            statement = parse_statement(lexer)
+            module.statements.append(statement)
+    return module
+
+
+def parse(source):
+    lexer = Lexer(source)
+    return parse_module(lexer)
+
+
+class VmException(Exception):
+    pass
+
+
+def vm_eval(expr, context):
+    if type(expr) is VariableExpression:
+        if expr.name not in context:
+            raise VmException("variable {} is not defined.".format(expr.name))
+        return context.get(expr.name)
+    elif type(expr) is BinaryExpression:
+        if expr.operation == "+":
+            return vm_eval(expr.lhs, context) + vm_eval(expr.rhs, context)
+        elif expr.operation == "-":
+            return vm_eval(expr.lhs, context) - vm_eval(expr.rhs, context)
+        elif expr.operation == "*":
+            return vm_eval(expr.lhs, context) * vm_eval(expr.rhs, context)
+        elif expr.operation == "/":
+            return vm_eval(expr.lhs, context) / vm_eval(expr.rhs, context)
+        elif expr.operation == "%":
+            return vm_eval(expr.lhs, context) % vm_eval(expr.rhs, context)
+        elif expr.operation == "==":
+            return vm_eval(expr.lhs, context) == vm_eval(expr.rhs, context)
+        elif expr.operation == "<=":
+            return vm_eval(expr.lhs, context) <= vm_eval(expr.rhs, context)
+        elif expr.operation == "<":
+            return vm_eval(expr.lhs, context) < vm_eval(expr.rhs, context)
+        elif expr.operation == ">":
+            return vm_eval(expr.lhs, context) > vm_eval(expr.rhs, context)
+        elif expr.operation == ">=":
+            return vm_eval(expr.lhs, context) >= vm_eval(expr.rhs, context)
+        elif expr.operation == "!=":
+            return vm_eval(expr.lhs, context) != vm_eval(expr.rhs, context)
+        else:
+            raise VmException("operation {} is not defined.".format(expr.operation))
+    elif type(expr) is CallExpression:
+        if expr.name == "print":
+            l = []
+            for expr in expr.params:
+                l.append(vm_eval(expr, context))
+            print(*l)
+            return None
+        func = context.get(expr.name)
+        if type(func) is not FunctionStatement:
+            raise VmException("function {} is not defined.".format(expr.name))
+        if len(func.args) != len(expr.params):
+            raise VmException("function {} is called but given dismatched parameters.".format(expr.name))
+        new_context = {}
+        for k, v in context.items():
+            if type(v) is FunctionStatement:
+                new_context[k] = v
+        for k, v in zip(func.args, expr.params):
+            new_context[k] = vm_eval(v, context)
+        for statement in func.statements:
+            if vm_run(statement, new_context):
+                return new_context.get("__return__")
+        else:
+            return None
+    elif type(expr) is ConstExpression:
+        return expr.value
+    else:
+        raise VmException("syntax error: {}".format(type(expr)))
+
+
+def vm_run(ast, context):
+    if type(ast) is Module:
+        for statement in ast.statements:
+            if vm_run(statement, context):
+                return context.get("__return__")
+    elif type(ast) is FunctionStatement:
+        context[ast.name] = ast
+        return False
+    elif type(ast) is ExpressionStatement:
+        value = vm_eval(ast.expression, context)
+        if ast.name:
+            context[ast.name] = value
+    elif type(ast) is IfStatement:
+        if vm_eval(ast.condition, context):
+            for statement in ast.true_statements:
+                if vm_run(statement, context):
+                    return context.get("__return__")
+        else:
+            for statement in ast.false_statements:
+                if vm_run(statement, context):
+                    return context.get("__return__")
+    elif type(ast) is ReturnStatement:
+        if ast.expression:
+            context["__return__"] = vm_eval(ast.expression, context)
+        return True
+    else:
+        print("syntax error: " + type(ast))
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("require source file.")
+        return 1
+    source_file = sys.argv[1]
+    with io.open(source_file, "r", encoding = "utf-8") as f:
+        source = f.read()
+    if not source.strip():
+        print("hello, world!")
+        return 0
+    ast = parse(source)
+    context = {}
+    return vm_run(ast, context)
+
+
+if __name__ == "__main__":
+    main()
+        
+
+    
