@@ -3,7 +3,7 @@
 GisonScript is a programming language in fovar of Gison style:
 
 * it is the most efficient programming language to write "Hello, world". Just an empty source file.
-* it use $, as the great Gison like it very much.
+* it use $ everywhere, as the great Gison like it very much.
 * long live Gison!
 
 how to run it:
