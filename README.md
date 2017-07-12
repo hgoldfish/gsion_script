@@ -8,7 +8,7 @@ GsionScript is a programming language in favor of Gsion style:
 
 how to run it:
 
-    $ git clone git@github.com:hgoldfish/gsion_script.git
+    $ git clone https://github.com/hgoldfish/gsion_script.git
     $ cd gsion_script
     $ ./gsion examples.gs
     $ ./gsion hello.gs
