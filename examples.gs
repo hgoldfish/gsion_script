@@ -1,14 +1,14 @@
-gison is the great!
+gsion is the great!
 
-gison says: $a = 1
-gison says: $b = 2
-gison says: print($a + $b)
-gison says: $c = $a + $b * 2
-gison says: if($c == 3) {
-gison says:     print("right")
-gison says: } else {
-gison says:     print("wrong")
-gison says: }
+gsion says: $a = 1
+gsion says: $b = 2
+gsion says: print($a + $b)
+gsion says: $c = $a + $b * 2
+gsion says: if($c == 3) {
+gsion says:     print("right")
+gsion says: } else {
+gsion says:     print("wrong")
+gsion says: }
 
 function factor(n) {
     if(n == 1) {
@@ -18,6 +18,6 @@ function factor(n) {
     }
 }
 
-gison says: print(factor(5))
+gsion says: print(factor(5))
 
-long live gison!
+long live gsion!

@@ -67,7 +67,7 @@ String = 5
 class Token:
     type = None
     value = ""
-    
+
     def __init__(self, type, value = None):
         self.type, self.value = type, value
 
@@ -94,14 +94,14 @@ def next_token(source):
                 yield Token(Operator, "=")
         elif c.isalpha() or c == "$":
             if c == "g":
-                if source[i:i+19] == "gison is the great!":
+                if source[i:i+19] == "gsion is the great!":
                     i += 19
                     continue
-                elif source[i:i+11] == "gison says:":
+                elif source[i:i+11] == "gsion says:":
                     i += 11
                     continue
             elif c == "l":
-                if source[i:i+16] == "long live gison!":
+                if source[i:i+16] == "long live gsion!":
                     i += 16
                     continue
             identifier = c
@@ -149,10 +149,10 @@ class Lexer:
     def __init__(self, source):
         self.itor = next_token(source)
         self.token = next(self.itor)
-        
+
     def peek(self):
         return self.token
-    
+
     def get(self):
         token = self.token
         try:
@@ -280,7 +280,7 @@ def parse_if_statement(lexer):
                 continue
             statement.false_statements.append(parse_statement(lexer))
     return statement
-    
+
 
 def parse_return_statement(lexer):
     token = lexer.get()
@@ -318,7 +318,7 @@ def parse_function_statement(lexer):
         token = lexer.peek()
         if token.type == Operator and token.value == ",":
             token.get()
-        
+
     token = lexer.get()
     if token.type != Operator or token.value != "{":
         raise ParseException("syntax error, miss '{' in function.")
@@ -367,7 +367,7 @@ def parse_statement(lexer):
         return parse_expression_statement(lexer)
     else:
         raise ParseException("syntax error: {}".format(token))
-            
+
 
 def parse_module(lexer):
     module = Module()
@@ -499,6 +499,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
 
-    
+
+
